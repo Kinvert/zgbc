@@ -4,7 +4,6 @@
 const std = @import("std");
 const GB = @import("gb.zig").GB;
 
-const NUM_THREADS = 16;
 const BENCH_FRAMES = 10_000;
 
 fn runFrames(gb: *GB, frames: usize) void {
@@ -12,6 +11,12 @@ fn runFrames(gb: *GB, frames: usize) void {
         gb.frame();
     }
 }
+
+// Cache-line aligned GB wrapper to prevent false sharing
+const AlignedGB = struct {
+    gb: GB align(64) = .{},
+    _padding: [64 - @sizeOf(GB) % 64]u8 = undefined,
+};
 
 pub fn main() !void {
     // Load ROM from file using posix read
@@ -54,84 +59,64 @@ pub fn main() !void {
         std.debug.print("vs realtime (60fps): {d:.0}x\n", .{fps / 60.0});
     }
 
-    // 16 instances sequential (cache behavior test)
-    {
-        var gbs: [NUM_THREADS]GB = undefined;
-        for (&gbs) |*gb| {
-            gb.* = GB{};
-            try gb.loadRom(rom);
-            gb.skipBootRom();
+    // Scaling test: 1, 2, 4, 8, 16 threads
+    std.debug.print("\n=== Parallel Scaling Test (cache-aligned) ===\n", .{});
+    std.debug.print("Threads |    FPS    | Per-thread |  Scaling\n", .{});
+    std.debug.print("--------|-----------|------------|----------\n", .{});
+
+    const single_fps = blk: {
+        var gb = GB{};
+        try gb.loadRom(rom);
+        gb.skipBootRom();
+        for (0..1000) |_| gb.frame(); // warmup
+
+        var timer = try std.time.Timer.start();
+        for (0..BENCH_FRAMES) |_| gb.frame();
+        const ns = timer.read();
+        break :blk @as(f64, BENCH_FRAMES) / (@as(f64, @floatFromInt(ns)) / 1e9);
+    };
+
+    const thread_counts = [_]usize{ 1, 2, 4, 8, 16 };
+
+    for (thread_counts) |num_threads| {
+        // Allocate cache-aligned GB instances
+        var gbs: [16]AlignedGB = undefined;
+        for (gbs[0..num_threads]) |*agb| {
+            agb.gb = GB{};
+            try agb.gb.loadRom(rom);
+            agb.gb.skipBootRom();
         }
 
         // Warmup
-        for (0..1000) |_| {
-            for (&gbs) |*gb| {
-                gb.frame();
-            }
+        for (gbs[0..num_threads]) |*agb| {
+            for (0..1000) |_| agb.gb.frame();
         }
 
         // Benchmark
         var timer = try std.time.Timer.start();
 
-        for (0..BENCH_FRAMES) |_| {
-            for (&gbs) |*gb| {
-                gb.frame();
-            }
+        var threads: [16]std.Thread = undefined;
+        for (threads[0..num_threads], gbs[0..num_threads]) |*t, *agb| {
+            t.* = try std.Thread.spawn(.{}, runFrames, .{ &agb.gb, BENCH_FRAMES });
         }
-
-        const elapsed_ns = timer.read();
-        const elapsed_s: f64 = @as(f64, @floatFromInt(elapsed_ns)) / 1_000_000_000.0;
-        const total_frames = BENCH_FRAMES * NUM_THREADS;
-        const fps: f64 = @as(f64, total_frames) / elapsed_s;
-
-        std.debug.print("\n=== zgbc Benchmark ({d} instances sequential) ===\n", .{NUM_THREADS});
-        std.debug.print("Frames per instance: {d}\n", .{BENCH_FRAMES});
-        std.debug.print("Total frames: {d}\n", .{total_frames});
-        std.debug.print("Time: {d:.3}s\n", .{elapsed_s});
-        std.debug.print("FPS (total): {d:.0}\n", .{fps});
-        std.debug.print("FPS (per instance): {d:.0}\n", .{fps / NUM_THREADS});
-        std.debug.print("vs realtime (60fps): {d:.0}x per instance\n", .{fps / NUM_THREADS / 60.0});
-    }
-
-    // 16 instances parallel (true threading)
-    {
-        var gbs: [NUM_THREADS]GB = undefined;
-        for (&gbs) |*gb| {
-            gb.* = GB{};
-            try gb.loadRom(rom);
-            gb.skipBootRom();
-        }
-
-        // Warmup
-        for (&gbs) |*gb| {
-            for (0..1000) |_| {
-                gb.frame();
-            }
-        }
-
-        // Benchmark with actual threads
-        var timer = try std.time.Timer.start();
-
-        var threads: [NUM_THREADS]std.Thread = undefined;
-        for (&threads, &gbs) |*t, *gb| {
-            t.* = try std.Thread.spawn(.{}, runFrames, .{ gb, BENCH_FRAMES });
-        }
-        for (&threads) |*t| {
+        for (threads[0..num_threads]) |*t| {
             t.join();
         }
 
         const elapsed_ns = timer.read();
-        const elapsed_s: f64 = @as(f64, @floatFromInt(elapsed_ns)) / 1_000_000_000.0;
-        const total_frames = BENCH_FRAMES * NUM_THREADS;
-        const fps: f64 = @as(f64, total_frames) / elapsed_s;
+        const elapsed_s: f64 = @as(f64, @floatFromInt(elapsed_ns)) / 1e9;
+        const total_frames: f64 = @floatFromInt(BENCH_FRAMES * num_threads);
+        const fps = total_frames / elapsed_s;
+        const per_thread = fps / @as(f64, @floatFromInt(num_threads));
+        const scaling = fps / single_fps;
 
-        std.debug.print("\n=== zgbc Benchmark ({d} instances PARALLEL) ===\n", .{NUM_THREADS});
-        std.debug.print("Frames per instance: {d}\n", .{BENCH_FRAMES});
-        std.debug.print("Total frames: {d}\n", .{total_frames});
-        std.debug.print("Time: {d:.3}s\n", .{elapsed_s});
-        std.debug.print("FPS (total): {d:.0}\n", .{fps});
-        std.debug.print("FPS (per instance): {d:.0}\n", .{fps / NUM_THREADS});
-        std.debug.print("vs realtime (60fps): {d:.0}x per instance\n", .{fps / NUM_THREADS / 60.0});
-        std.debug.print("\n", .{});
+        std.debug.print("{d:>7} | {d:>9.0} | {d:>10.0} | {d:>7.2}x\n", .{
+            num_threads, fps, per_thread, scaling,
+        });
     }
+
+    std.debug.print("\nExpected 16-thread FPS: {d:.0}\n", .{single_fps * 16});
+    std.debug.print("GB struct size: {} bytes\n", .{@sizeOf(GB)});
+    std.debug.print("AlignedGB size: {} bytes\n", .{@sizeOf(AlignedGB)});
+    std.debug.print("\n", .{});
 }
