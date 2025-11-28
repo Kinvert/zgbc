@@ -1,7 +1,9 @@
 //! WASM bindings for browser deployment
 //! Exports a minimal API for running Game Boy games in the browser.
 
-const GB = @import("gb.zig").GB;
+const gb_mod = @import("gb.zig");
+const GB = gb_mod.GB;
+const SaveState = gb_mod.SaveState;
 const ppu = @import("ppu.zig");
 const PALETTE = ppu.PALETTE;
 
@@ -9,6 +11,7 @@ var gb: GB = .{};
 var rgba_buffer: [160 * 144]u32 = undefined;
 var rom_storage: [4 * 1024 * 1024]u8 = undefined; // 4MB max ROM
 var audio_buffer: [4096]i16 = undefined; // Audio sample buffer
+var save_state_buffer: SaveState = undefined; // Save state buffer
 
 /// Initialize emulator state
 export fn init() void {
@@ -79,4 +82,39 @@ export fn setRenderGraphics(enabled: bool) void {
 /// Enable/disable audio rendering (for headless mode)
 export fn setRenderAudio(enabled: bool) void {
     gb.render_audio = enabled;
+}
+
+// =========================================================
+// Battery saves (SRAM) - persists between sessions
+// =========================================================
+
+/// Get pointer to save RAM (8KB for Pokemon)
+export fn getSavePtr() [*]u8 {
+    return &gb.mmu.eram;
+}
+
+/// Get save RAM size
+export fn getSaveSize() usize {
+    return gb.mmu.eram.len;
+}
+
+// =========================================================
+// Save states (full snapshot)
+// =========================================================
+
+/// Get save state buffer size
+export fn saveStateSize() usize {
+    return @sizeOf(SaveState);
+}
+
+/// Create save state, return pointer to buffer
+export fn saveState() [*]u8 {
+    save_state_buffer = gb.saveState();
+    return @ptrCast(&save_state_buffer);
+}
+
+/// Load save state from buffer
+export fn loadState(ptr: [*]const u8) void {
+    const state: *const SaveState = @ptrCast(@alignCast(ptr));
+    gb.loadState(state);
 }

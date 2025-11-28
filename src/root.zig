@@ -13,6 +13,7 @@ pub const MBC = @import("mbc.zig").MBC;
 pub const PPU = @import("ppu.zig").PPU;
 pub const PALETTE = @import("ppu.zig").PALETTE;
 pub const APU = @import("apu.zig").APU;
+pub const SaveState = @import("gb.zig").SaveState;
 
 // SIMD batch processing
 pub const simd = @import("simd_batch.zig");

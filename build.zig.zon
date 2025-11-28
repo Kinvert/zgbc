@@ -2,7 +2,7 @@
     .name = .zgbc,
     .version = "0.1.0",
     .fingerprint = 0xeb2e7b869ea81f97,
-    .minimum_zig_version = "0.14.0",
+    .minimum_zig_version = "0.15.1",
     .dependencies = .{},
     .paths = .{
         "build.zig",

@@ -3,6 +3,14 @@
 
 const std = @import("std");
 
+/// MBC save state data
+pub const MBCSaveState = extern struct {
+    rom_bank: u8,
+    ram_bank: u8,
+    ram_enabled: u8,
+    mode: u8,
+};
+
 pub const MBC = union(enum) {
     none: void,
     mbc1: MBC1,
@@ -83,6 +91,43 @@ pub const MBC = union(enum) {
                     0x6000...0x7FFF => {}, // RTC latch (stubbed)
                     else => {},
                 }
+            },
+        }
+    }
+
+    /// Export MBC state for save states
+    pub fn toSaveState(self: *const MBC) MBCSaveState {
+        return switch (self.*) {
+            .none => .{ .rom_bank = 1, .ram_bank = 0, .ram_enabled = 0, .mode = 0 },
+            .mbc1 => |m| .{
+                .rom_bank = m.rom_bank,
+                .ram_bank = m.ram_bank,
+                .ram_enabled = @intFromBool(m.ram_enabled),
+                .mode = @intFromBool(m.mode),
+            },
+            .mbc3 => |m| .{
+                .rom_bank = m.rom_bank,
+                .ram_bank = m.ram_bank,
+                .ram_enabled = @intFromBool(m.ram_enabled),
+                .mode = 0,
+            },
+        };
+    }
+
+    /// Restore MBC state from save state
+    pub fn fromSaveState(self: *MBC, state: MBCSaveState) void {
+        switch (self.*) {
+            .none => {},
+            .mbc1 => |*m| {
+                m.rom_bank = state.rom_bank;
+                m.ram_bank = state.ram_bank;
+                m.ram_enabled = state.ram_enabled != 0;
+                m.mode = state.mode != 0;
+            },
+            .mbc3 => |*m| {
+                m.rom_bank = state.rom_bank;
+                m.ram_bank = state.ram_bank;
+                m.ram_enabled = state.ram_enabled != 0;
             },
         }
     }
