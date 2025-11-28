@@ -46,6 +46,35 @@ pub fn build(b: *std.Build) void {
     bench_step.dependOn(&b.addRunArtifact(bench).step);
 
     // ============================================================
+    // C libraries (libzgbc)
+    // ============================================================
+    const c_api_mod = b.createModule(.{
+        .root_source_file = b.path("src/c_api.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // Shared library
+    const shared_lib = b.addLibrary(.{
+        .linkage = .dynamic,
+        .name = "zgbc",
+        .root_module = c_api_mod,
+    });
+    shared_lib.linkLibC();
+
+    // Static library
+    const static_lib = b.addLibrary(.{
+        .linkage = .static,
+        .name = "zgbc",
+        .root_module = c_api_mod,
+    });
+
+    const lib_step = b.step("lib", "Build C libraries (libzgbc.so + libzgbc.a)");
+    lib_step.dependOn(&b.addInstallArtifact(shared_lib, .{}).step);
+    lib_step.dependOn(&b.addInstallArtifact(static_lib, .{}).step);
+    lib_step.dependOn(&b.addInstallHeaderFile(b.path("include/zgbc.h"), "zgbc.h").step);
+
+    // ============================================================
     // WASM build
     // ============================================================
     const wasm = b.addExecutable(.{
