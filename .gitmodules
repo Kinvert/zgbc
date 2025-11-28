@@ -1,3 +1,6 @@
 [submodule "test/gb-test-roms"]
 	path = test/gb-test-roms
 	url = https://github.com/retrio/gb-test-roms.git
+[submodule "test/nes-test-roms"]
+	path = test/nes-test-roms
+	url = https://github.com/christopherpow/nes-test-roms.git

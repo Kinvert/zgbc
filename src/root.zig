@@ -11,6 +11,10 @@ pub const gb = @import("gb/system.zig");
 pub const GB = gb.GB;
 pub const SaveState = gb.SaveState;
 
+// NES
+pub const nes = @import("nes/system.zig");
+pub const NES = nes.NES;
+
 // Re-export GB internals for backwards compatibility
 pub const CPU = @import("gb/cpu.zig").CPU;
 pub const Flags = @import("gb/cpu.zig").Flags;

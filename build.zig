@@ -127,11 +127,24 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
+    // NES nestest
+    const nestest = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("test/nestest.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "zgbc", .module = zgbc_mod }},
+        }),
+    });
+
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&b.addRunArtifact(lib_tests).step);
 
     const blargg_step = b.step("test-blargg", "Run Blargg CPU instruction tests");
     blargg_step.dependOn(&b.addRunArtifact(blargg_tests).step);
+
+    const nestest_step = b.step("test-nestest", "Run NES CPU test ROM");
+    nestest_step.dependOn(&b.addRunArtifact(nestest).step);
 
     const pokemon_step = b.step("test-pokemon", "Run Pokemon Red boot test");
     pokemon_step.dependOn(&b.addRunArtifact(pokemon_tests).step);
