@@ -59,34 +59,57 @@ pub fn main() !void {
     const bytes_read = try std.posix.pread(file.handle, rom, 0);
     if (bytes_read != rom.len) return error.IncompleteRead;
 
-    // Scaling test
+    // Single-thread comparison: full vs headless
     std.debug.print("\n=== zgbc benchmark (Pokemon Red) ===\n", .{});
+
+    var gb_full = GB{};
+    try gb_full.loadRom(rom);
+    gb_full.skipBootRom();
+    for (0..1000) |_| gb_full.frame();
+
+    // Save screenshot to verify PPU
+    try saveScreenshot(gb_full.getFrameBuffer(), "screenshot.ppm");
+    std.debug.print("Screenshot saved to screenshot.ppm\n", .{});
+
+    // Benchmark full rendering
+    var timer_full = try std.time.Timer.start();
+    for (0..BENCH_FRAMES) |_| gb_full.frame();
+    const full_ns = timer_full.read();
+    const full_fps = @as(f64, BENCH_FRAMES) / (@as(f64, @floatFromInt(full_ns)) / 1e9);
+
+    // Benchmark headless (no graphics, no audio)
+    var gb_headless = GB{};
+    gb_headless.render_graphics = false;
+    gb_headless.render_audio = false;
+    try gb_headless.loadRom(rom);
+    gb_headless.skipBootRom();
+    for (0..1000) |_| gb_headless.frame();
+
+    var timer_headless = try std.time.Timer.start();
+    for (0..BENCH_FRAMES) |_| gb_headless.frame();
+    const headless_ns = timer_headless.read();
+    const headless_fps = @as(f64, BENCH_FRAMES) / (@as(f64, @floatFromInt(headless_ns)) / 1e9);
+
+    std.debug.print("\nSingle-thread performance:\n", .{});
+    std.debug.print("  Full (PPU+APU): {d:>8.0} FPS\n", .{full_fps});
+    std.debug.print("  Headless:       {d:>8.0} FPS ({d:.1}x faster)\n", .{ headless_fps, headless_fps / full_fps });
+
+    // Multi-threaded headless scaling
+    std.debug.print("\nHeadless multi-threaded scaling:\n", .{});
     std.debug.print("Threads |    FPS    | Per-thread |  Scaling\n", .{});
     std.debug.print("--------|-----------|------------|----------\n", .{});
 
-    const single_fps = blk: {
-        var gb = GB{};
-        try gb.loadRom(rom);
-        gb.skipBootRom();
-        for (0..1000) |_| gb.frame(); // warmup
-
-        // Save screenshot to verify PPU
-        try saveScreenshot(gb.getFrameBuffer(), "screenshot.ppm");
-        std.debug.print("Screenshot saved to screenshot.ppm\n", .{});
-
-        var timer = try std.time.Timer.start();
-        for (0..BENCH_FRAMES) |_| gb.frame();
-        const ns = timer.read();
-        break :blk @as(f64, BENCH_FRAMES) / (@as(f64, @floatFromInt(ns)) / 1e9);
-    };
+    const single_fps = headless_fps;
 
     const thread_counts = [_]usize{ 1, 2, 4, 8, 16, 32 };
 
     for (thread_counts) |num_threads| {
-        // Allocate cache-aligned GB instances
+        // Allocate cache-aligned GB instances (headless mode)
         var gbs: [32]AlignedGB = undefined;
         for (gbs[0..num_threads]) |*agb| {
             agb.gb = GB{};
+            agb.gb.render_graphics = false;
+            agb.gb.render_audio = false;
             try agb.gb.loadRom(rom);
             agb.gb.skipBootRom();
         }

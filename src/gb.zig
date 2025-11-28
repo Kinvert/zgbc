@@ -18,6 +18,10 @@ pub const GB = struct {
 
     cycles: u64 = 0, // Total cycles elapsed
 
+    // Feature flags for headless/training mode
+    render_graphics: bool = true, // Set false to skip PPU rendering
+    render_audio: bool = true, // Set false to skip APU sample generation
+
     /// Execute one instruction, return cycles consumed
     pub fn step(self: *GB) u8 {
         // Wire APU to MMU on first call
@@ -37,15 +41,17 @@ pub const GB = struct {
             cycles,
         );
 
-        // Update APU
-        self.apu.tick(cycles);
+        // Update APU (skip sample generation if disabled)
+        if (self.render_audio) {
+            self.apu.tick(cycles);
+        }
 
-        // Update PPU (LY counter, interrupts)
+        // Update PPU timing (LY counter, interrupts) - always runs for game logic
         const prev_ly = self.mmu.ly;
         self.mmu.tickPpu(cycles);
 
-        // Render scanline when LY changes
-        if (self.mmu.ly != prev_ly) {
+        // Render scanline when LY changes (skip if graphics disabled)
+        if (self.render_graphics and self.mmu.ly != prev_ly) {
             if (self.mmu.ly == 0) {
                 self.ppu.resetWindowLine();
             }

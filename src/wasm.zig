@@ -70,3 +70,13 @@ export fn getAudioBuffer() [*]i16 {
 export fn getAudioSamples() usize {
     return gb.getAudioSamples(&audio_buffer);
 }
+
+/// Enable/disable graphics rendering (for headless mode)
+export fn setRenderGraphics(enabled: bool) void {
+    gb.render_graphics = enabled;
+}
+
+/// Enable/disable audio rendering (for headless mode)
+export fn setRenderAudio(enabled: bool) void {
+    gb.render_audio = enabled;
+}
