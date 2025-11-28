@@ -211,9 +211,9 @@ pub const NES = struct {
         self.ppu.mask = state.ppu.mask;
         self.ppu.status = state.ppu.status;
         self.ppu.oam_addr = state.ppu.oam_addr;
-        self.ppu.v = state.ppu.v;
-        self.ppu.t = state.ppu.t;
-        self.ppu.x = state.ppu.x;
+        self.ppu.v = @truncate(state.ppu.v);
+        self.ppu.t = @truncate(state.ppu.t);
+        self.ppu.x = @truncate(state.ppu.x);
         self.ppu.w = state.ppu.w != 0;
         self.ppu.scanline = state.ppu.scanline;
         self.ppu.cycle = state.ppu.cycle;
