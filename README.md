@@ -1,6 +1,6 @@
 # zgbc
 
-High-performance Game Boy emulator in pure Zig. Full graphics, audio, and a 137KB WASM build for browsers.
+High-performance Game Boy emulator in pure Zig. Full graphics, audio, save states, and multiple integration paths: Zig library, C FFI, or 137KB WASM for browsers.
 
 ## Performance
 
@@ -28,27 +28,33 @@ Threads |    FPS    | Per-thread |  Scaling
 
 - **Full PPU** — Background, window, sprites, all 4 colors
 - **Full APU** — 2 pulse channels, wave channel, noise channel
-- **WASM build** — 137KB, runs in browser at 60 FPS with audio
+- **Save states** — Full 25KB snapshots, instant save/load
+- **Battery saves** — 8KB SRAM persistence for Pokemon etc.
 - **Headless mode** — Disable rendering for 5x speedup in training
+- **C FFI** — `libzgbc.so` / `libzgbc.a` with stable ABI
+- **WASM build** — 137KB, runs in browser at 60 FPS with audio
 - **All Blargg CPU tests pass** — Correct LR35902 implementation
 - **MBC1/MBC3 support** — Pokemon Red/Blue/Yellow compatible
 - **Zero dependencies** — Pure Zig, no libc required
-- **~3,000 lines** — Auditable, hackable
+- **~3,500 lines** — Auditable, hackable
 
 ## Building
 
 ```bash
-# Native build
+# Native CLI
 zig build -Doptimize=ReleaseFast
 
-# WASM build (outputs to zig-out/bin/zgbc.wasm)
+# C library (libzgbc.so + libzgbc.a + zgbc.h)
+zig build lib -Doptimize=ReleaseFast
+
+# WASM (zig-out/bin/zgbc.wasm)
 zig build wasm
 
-# Run tests
+# Tests
 zig build test
 zig build test-blargg
 
-# Run benchmark
+# Benchmark
 zig build bench
 ```
 
@@ -114,7 +120,61 @@ const pixels = gb.getFrameBuffer();
 // Get audio samples (stereo i16, 44100 Hz)
 var audio: [2048]i16 = undefined;
 const count = gb.getAudioSamples(&audio);
+
+// Save states
+const state = gb.saveState();
+// ... later ...
+gb.loadState(&state);
+
+// Battery saves (SRAM)
+const sram = gb.getSaveData();
+// ... persist to disk ...
+gb.loadSaveData(saved_sram);
 ```
+
+### C (libzgbc)
+
+```c
+#include <zgbc.h>
+
+zgbc_t* gb = zgbc_new();
+zgbc_load_rom(gb, rom_data, rom_len);
+
+// Headless mode for training
+zgbc_set_render_graphics(gb, false);
+zgbc_set_render_audio(gb, false);
+
+// Run one frame
+zgbc_frame(gb);
+
+// Set joypad (bits: A,B,Sel,Start,R,L,U,D)
+zgbc_set_input(gb, ZGBC_BTN_A | ZGBC_BTN_START);
+
+// Read RAM
+uint8_t player_x = zgbc_read(gb, 0xD362);
+
+// Get frame buffer (160x144 RGBA)
+uint32_t pixels[160*144];
+zgbc_get_frame_rgba(gb, pixels);
+
+// Get audio
+int16_t audio[4096];
+size_t count = zgbc_get_audio_samples(gb, audio, 4096);
+
+// Save states (25KB)
+uint8_t state[ZGBC_SAVE_STATE_SIZE];
+zgbc_save_state(gb, state);
+zgbc_load_state(gb, state);
+
+// Battery saves
+const uint8_t* sram = zgbc_get_save_data(gb);
+size_t sram_size = zgbc_get_save_size(gb);
+// ... persist to disk, reload with zgbc_load_save_data() ...
+
+zgbc_free(gb);
+```
+
+Link with: `gcc -lzgbc -L/path/to/zig-out/lib -I/path/to/zig-out/include`
 
 ### WASM (Browser)
 
@@ -146,6 +206,12 @@ function frame() {
     const audioCount = wasm.getAudioSamples();
     const audioPtr = wasm.getAudioBuffer();
     const samples = new Int16Array(wasm.memory.buffer, audioPtr, audioCount);
+
+    // Save states
+    const stateSize = wasm.saveStateSize();
+    const statePtr = wasm.saveState();
+    const state = new Uint8Array(wasm.memory.buffer, statePtr, stateSize);
+    // ... store state, later: wasm.loadState(ptr) ...
 }
 ```
 
@@ -185,10 +251,14 @@ src/
 ├── timer.zig     # DIV/TIMA timer
 ├── ppu.zig       # Pixel Processing Unit, scanline renderer
 ├── apu.zig       # Audio Processing Unit, 4 channels
-├── gb.zig        # Top-level Game Boy state
+├── gb.zig        # Top-level Game Boy state, save states
+├── c_api.zig     # C FFI bindings (libzgbc)
 ├── wasm.zig      # WASM bindings
 ├── bench.zig     # Performance benchmark
-└── root.zig      # Public API
+└── root.zig      # Public Zig API
+
+include/
+└── zgbc.h        # C header
 
 web/
 ├── index.html    # Browser demo
