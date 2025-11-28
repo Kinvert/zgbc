@@ -1,0 +1,3 @@
+[submodule "test/gb-test-roms"]
+	path = test/gb-test-roms
+	url = https://github.com/retrio/gb-test-roms.git

@@ -1,0 +1,4 @@
+.zig-cache/
+zig-out/
+roms/
+test/pokered.gb
