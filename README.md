@@ -52,6 +52,38 @@ zig build test-blargg
 zig build bench
 ```
 
+## As a Dependency
+
+Add to your `build.zig.zon`:
+
+```zig
+.dependencies = .{
+    .zgbc = .{
+        .url = "https://github.com/yourusername/zgbc/archive/refs/heads/master.tar.gz",
+        .hash = "...",  // zig build will tell you the hash
+    },
+},
+```
+
+Then in your `build.zig`:
+
+```zig
+const zgbc_dep = b.dependency("zgbc", .{
+    .target = target,
+    .optimize = optimize,
+});
+
+exe.root_module.addImport("zgbc", zgbc_dep.module("zgbc"));
+```
+
+Or for a local path dependency:
+
+```zig
+.dependencies = .{
+    .zgbc = .{ .path = "../zgbc" },
+},
+```
+
 ## Usage
 
 ### Native (Zig)
