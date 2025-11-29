@@ -61,13 +61,17 @@ pub const APU = struct {
         const dmc: f32 = @floatFromInt(self.dmc.output);
 
         // Mix using NES nonlinear mixing
-        const pulse_out = if (p1 + p2 > 0) 95.88 / (100.0 / (p1 + p2) + 8128.0) else 0;
-        const tnd_out = if (tri + noise + dmc > 0) 159.79 / (100.0 / (tri / 8227.0 + noise / 12241.0 + dmc / 22638.0) + 1.0) else 0;
+        const pulse_out: f32 = if (p1 + p2 > 0) 95.88 / (100.0 / (p1 + p2) + 8128.0) else 0;
+        const tnd_out: f32 = if (tri + noise + dmc > 0) 159.79 / (100.0 / (tri / 8227.0 + noise / 12241.0 + dmc / 22638.0) + 1.0) else 0;
 
         const sample: i16 = @intFromFloat((pulse_out + tnd_out) * 32767.0);
 
-        self.sample_buffer[self.sample_write_idx] = sample;
-        self.sample_write_idx = (self.sample_write_idx + 1) % self.sample_buffer.len;
+        // Output stereo (same on both channels)
+        if (self.sample_write_idx + 1 < self.sample_buffer.len) {
+            self.sample_buffer[self.sample_write_idx] = sample; // Left
+            self.sample_buffer[self.sample_write_idx + 1] = sample; // Right
+            self.sample_write_idx = (self.sample_write_idx + 2) % self.sample_buffer.len;
+        }
     }
 
     pub fn tickFrameCounter(self: *APU) void {

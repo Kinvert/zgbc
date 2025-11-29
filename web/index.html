@@ -156,19 +156,33 @@
             }
         };
 
-        // Button bits: A=0, B=1, Select=2, Start=3, Right=4, Left=5, Up=6, Down=7
-        const keyMap = {
-            'z': 0, 'Z': 0,
-            'x': 1, 'X': 1,
-            'Shift': 2,
-            'Enter': 3,
-            'ArrowRight': 4,
-            'ArrowLeft': 5,
-            'ArrowUp': 6,
-            'ArrowDown': 7
+        // GB:  A=0, B=1, Select=2, Start=3, Right=4, Left=5, Up=6, Down=7
+        // NES: A=0, B=1, Select=2, Start=3, Up=4, Down=5, Left=6, Right=7
+        const keyMaps = {
+            gb: {
+                'z': 0, 'Z': 0,
+                'x': 1, 'X': 1,
+                'Shift': 2,
+                'Enter': 3,
+                'ArrowRight': 4,
+                'ArrowLeft': 5,
+                'ArrowUp': 6,
+                'ArrowDown': 7
+            },
+            nes: {
+                'z': 0, 'Z': 0,
+                'x': 1, 'X': 1,
+                'Shift': 2,
+                'Enter': 3,
+                'ArrowUp': 4,
+                'ArrowDown': 5,
+                'ArrowLeft': 6,
+                'ArrowRight': 7
+            }
         };
 
         document.addEventListener('keydown', e => {
+            const keyMap = keyMaps[currentSystem] || keyMaps.gb;
             if (keyMap.hasOwnProperty(e.key)) {
                 buttons |= (1 << keyMap[e.key]);
                 e.preventDefault();
@@ -176,6 +190,7 @@
         });
 
         document.addEventListener('keyup', e => {
+            const keyMap = keyMaps[currentSystem] || keyMaps.gb;
             if (keyMap.hasOwnProperty(e.key)) {
                 buttons &= ~(1 << keyMap[e.key]);
                 e.preventDefault();
