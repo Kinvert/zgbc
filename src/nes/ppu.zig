@@ -68,12 +68,23 @@ pub const PPU = struct {
         if (self.scanline >= 0 and self.scanline < 240) {
             if (self.cycle >= 1 and self.cycle <= 256) {
                 self.renderPixel();
+                // Increment coarse X every 8 pixels
+                if (self.cycle & 7 == 0 and self.renderingEnabled()) {
+                    self.incrementX();
+                }
             }
             if (self.cycle == 256 and self.renderingEnabled()) {
                 self.incrementY();
             }
             if (self.cycle == 257 and self.renderingEnabled()) {
                 self.copyHorizontal();
+            }
+        }
+
+        // Also increment during pre-render for timing
+        if (self.scanline == -1 and self.cycle >= 1 and self.cycle <= 256) {
+            if (self.cycle & 7 == 0 and self.renderingEnabled()) {
+                self.incrementX();
             }
         }
 
@@ -114,30 +125,33 @@ pub const PPU = struct {
         var bg_color: u8 = 0;
         var bg_opaque = false;
 
-        // Background
+        // Background - use v register for tile coordinates
         if (self.mask & 0x08 != 0 and (self.mask & 0x02 != 0 or px >= 8)) {
-            const fine_x = (px + self.x) & 7;
-            const tile_x = ((px + @as(u16, self.x)) / 8) & 31;
-            const tile_y = (self.v >> 5) & 31;
-            const nt_select = (self.v >> 10) & 3;
+            // Fine X comes from x register, adjusted by pixel position within tile
+            const fine_x: u3 = @truncate((px + self.x) & 7);
 
-            const nt_addr = 0x2000 | (@as(u16, nt_select) << 10) | (@as(u16, tile_y) << 5) | tile_x;
+            // Coarse X and Y from v register
+            const coarse_x = self.v & 0x1F;
+            const coarse_y = (self.v >> 5) & 0x1F;
+            const nt_select = (self.v >> 10) & 0x03;
+            const fine_y: u3 = @truncate(self.v >> 12);
+
+            const nt_addr = 0x2000 | (@as(u16, nt_select) << 10) | (@as(u16, coarse_y) << 5) | coarse_x;
             const tile_idx = self.readVram(nt_addr);
 
-            const fine_y: u3 = @truncate(self.v >> 12);
             const pattern_base: u16 = if (self.ctrl & 0x10 != 0) 0x1000 else 0;
             const pattern_addr = pattern_base + @as(u16, tile_idx) * 16 + fine_y;
 
             const lo = self.readChr(pattern_addr);
             const hi = self.readChr(pattern_addr + 8);
 
-            const bit: u3 = @intCast(7 - fine_x);
+            const bit: u3 = 7 - fine_x;
             const color_idx = (((hi >> bit) & 1) << 1) | ((lo >> bit) & 1);
 
             if (color_idx != 0) {
-                const attr_addr = 0x23C0 | (@as(u16, nt_select) << 10) | ((tile_y >> 2) << 3) | (tile_x >> 2);
+                const attr_addr = 0x23C0 | (@as(u16, nt_select) << 10) | ((coarse_y >> 2) << 3) | (coarse_x >> 2);
                 const attr = self.readVram(attr_addr);
-                const shift: u3 = @intCast(((tile_y & 2) << 1) | (tile_x & 2));
+                const shift: u3 = @intCast(((coarse_y & 2) << 1) | (coarse_x & 2));
                 const palette_idx = (attr >> shift) & 0x03;
 
                 bg_color = self.palette[@as(usize, palette_idx) * 4 + color_idx];
@@ -238,6 +252,16 @@ pub const PPU = struct {
             .single1 => (a & 0x3FF) | 0x400,
             .four_screen => a,
         };
+    }
+
+    fn incrementX(self: *PPU) void {
+        // Increment coarse X, wrapping and switching nametable
+        if ((self.v & 0x001F) == 31) {
+            self.v &= ~@as(u15, 0x001F); // Clear coarse X
+            self.v ^= 0x0400; // Switch horizontal nametable
+        } else {
+            self.v += 1;
+        }
     }
 
     fn incrementY(self: *PPU) void {
