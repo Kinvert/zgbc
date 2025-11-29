@@ -4,3 +4,6 @@
 [submodule "test/nes-test-roms"]
 	path = test/nes-test-roms
 	url = https://github.com/christopherpow/nes-test-roms.git
+[submodule "test/roms/68k-bcd-verifier"]
+	path = test/roms/68k-bcd-verifier
+	url = https://github.com/flamewing/68k-bcd-verifier
