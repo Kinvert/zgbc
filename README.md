@@ -58,6 +58,48 @@ zig build test-blargg
 zig build bench
 ```
 
+## Native CLI
+
+`zig build run -- <rom>` launches a desktop window backed by raylib with the same controls as the WASM build (Z/X for the primary buttons, Shift/Enter for Select/Start, arrow keys for the D-pad, C for Genesis C, etc.).
+
+```
+zig build run -- roms/pokered.gb
+zig build run -- --system genesis roms/sonic2.md
+zig build run -- --headless --no-audio roms/battletoads.nes
+```
+
+Available flags:
+
+- `--system <auto|gb|nes|sms|genesis>`: override automatic ROM detection.
+- `--scale <N>`: integer window scale factor (default `3`).
+- `--no-audio`: keep the emulator running but mute playback.
+- `--headless`: skip the raylib surface entirely and print the achieved FPS in the terminal.
+- `--skip-boot`: start Game Boy titles directly at `0x0100`.
+
+raylib is built from source in `third_party/raylib`, so no external SDKs are required beyond your platform OpenGL/X11/CoreAudio libraries.
+
+## Python bindings
+
+A thin ctypes wrapper ships in `bindings/python/zgbc.py`. Point `PYTHONPATH` at `bindings/python/`, make sure `libzgbc` has been built (`zig build lib`), and use it like this:
+
+```python
+from pathlib import Path
+from zgbc import GameBoy, Buttons
+
+gb = GameBoy()
+gb.load_rom(Path("roms/pokered.gb").read_bytes())
+gb.skip_boot()
+
+while True:
+    gb.set_input(Buttons.A | Buttons.START)
+    gb.frame()
+    frame = gb.get_frame_rgba()  # memoryview of 160x144 RGBA pixels
+    audio = gb.get_audio_samples()
+    # ... feed into your renderer/audio device ...
+```
+
+The wrapper takes care of loading the shared library (or respect `ZGBC_LIB` if you want to point it somewhere explicit) and exposes the most common APIs for headless integrations.
+
 ## As a Dependency
 
 Add to your `build.zig.zon`:

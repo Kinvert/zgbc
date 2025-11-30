@@ -1,5 +1,53 @@
 const std = @import("std");
 
+fn addRaylib(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) *std.Build.Step.Compile {
+    const raylib_dir = "third_party/raylib/src";
+
+    const sources = [_][]const u8{
+        b.pathJoin(&.{ raylib_dir, "rcore.c" }),
+        b.pathJoin(&.{ raylib_dir, "rshapes.c" }),
+        b.pathJoin(&.{ raylib_dir, "rtextures.c" }),
+        b.pathJoin(&.{ raylib_dir, "rtext.c" }),
+        b.pathJoin(&.{ raylib_dir, "rmodels.c" }),
+        b.pathJoin(&.{ raylib_dir, "raudio.c" }),
+        b.pathJoin(&.{ raylib_dir, "rglfw.c" }),
+        b.pathJoin(&.{ raylib_dir, "utils.c" }),
+    };
+
+    const lib = b.addLibrary(.{
+        .name = "raylib",
+        .linkage = .static,
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+
+    lib.addIncludePath(b.path(raylib_dir));
+    lib.addIncludePath(b.path("third_party/raylib/src/external/glfw/include"));
+    if (target.result.os.tag == .windows) {
+        lib.addIncludePath(b.path("third_party/raylib/src/external"));
+    }
+    lib.addCSourceFiles(.{
+        .files = &sources,
+        .flags = &.{
+            "-std=c99",
+            "-DPLATFORM_DESKTOP",
+            "-D_POSIX_C_SOURCE=199309L",
+            "-D_GNU_SOURCE",
+            "-DSUPPORT_FILEFORMAT_WAV",
+            "-DSUPPORT_FILEFORMAT_OGG",
+            "-DSUPPORT_FILEFORMAT_MP3",
+        },
+    });
+    lib.linkLibC();
+    return lib;
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -24,6 +72,43 @@ pub fn build(b: *std.Build) void {
             .imports = &.{.{ .name = "zgbc", .module = zgbc_mod }},
         }),
     });
+
+    const raylib_lib = addRaylib(b, exe.root_module.resolved_target.?, optimize);
+    exe.linkLibrary(raylib_lib);
+    exe.linkLibC();
+
+    switch (target.result.os.tag) {
+        .linux => {
+            exe.linkSystemLibrary("m");
+            exe.linkSystemLibrary("dl");
+            exe.linkSystemLibrary("pthread");
+            exe.linkSystemLibrary("rt");
+            exe.linkSystemLibrary("X11");
+            exe.linkSystemLibrary("GL");
+            exe.linkSystemLibrary("Xi");
+            exe.linkSystemLibrary("Xrandr");
+        },
+        .macos => {
+            exe.linkFramework("Cocoa");
+            exe.linkFramework("IOKit");
+            exe.linkFramework("CoreVideo");
+            exe.linkFramework("OpenGL");
+            exe.linkFramework("CoreAudio");
+            exe.linkFramework("AudioToolbox");
+            exe.linkFramework("Carbon");
+        },
+        .windows => {
+            exe.linkSystemLibrary("winmm");
+            exe.linkSystemLibrary("gdi32");
+            exe.linkSystemLibrary("opengl32");
+            exe.linkSystemLibrary("user32");
+            exe.linkSystemLibrary("kernel32");
+            exe.linkSystemLibrary("shell32");
+            exe.linkSystemLibrary("ole32");
+        },
+        else => {},
+    }
+
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
@@ -185,4 +270,52 @@ pub fn build(b: *std.Build) void {
     });
     const sms_visual_step = b.step("test-sms-visual", "SMS visual rendering test");
     sms_visual_step.dependOn(&b.addRunArtifact(sms_visual).step);
+
+    // Battletoads (NES AxROM/MMC3 test)
+    const battletoads = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("test/battletoads_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "zgbc", .module = zgbc_mod }},
+        }),
+    });
+    const battletoads_step = b.step("test-battletoads", "Battletoads NES visual test");
+    battletoads_step.dependOn(&b.addRunArtifact(battletoads).step);
+
+    // Genesis test
+    const genesis_test = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("test/genesis_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "zgbc", .module = zgbc_mod }},
+        }),
+    });
+    const genesis_step = b.step("test-genesis", "Genesis visual test");
+    genesis_step.dependOn(&b.addRunArtifact(genesis_test).step);
+
+    // M68K CPU unit tests
+    const m68k_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("test/m68k_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "zgbc", .module = zgbc_mod }},
+        }),
+    });
+    const m68k_step = b.step("test-m68k", "M68K CPU instruction tests");
+    m68k_step.dependOn(&b.addRunArtifact(m68k_tests).step);
+
+    // M68K JSON tests (TomHarte ProcessorTests)
+    const m68k_json = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("test/m68k_json_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "zgbc", .module = zgbc_mod }},
+        }),
+    });
+    const m68k_json_step = b.step("test-m68k-json", "M68K CPU tests from ProcessorTests");
+    m68k_json_step.dependOn(&b.addRunArtifact(m68k_json).step);
 }
